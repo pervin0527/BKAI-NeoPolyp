@@ -4,20 +4,15 @@ import numpy as np
 import albumentations as A
 
 from torch.utils.data import Dataset
+from data.batch_preprocess import *
 
 class BKAIDataset(Dataset):
-    def __init__(self, base_dir, split, size, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+    def __init__(self, config, split):
         super().__init__()
-        self.base_dir = base_dir
+        self.base_dir = config["data_dir"]
         self.split = split
-        self.size = size
-        self.mean, self.std = mean, std
-
-        self.set_txt = f"{base_dir}/{split}.txt"
-        with open(self.set_txt, "r") as f:
-            file_list = f.readlines()
-
-        self.file_list = [x.strip() for x in file_list]
+        self.size = config["img_size"]
+        self.mean, self.std = config["mean"], config["std"]
 
         self.train_transform = A.Compose([A.Rotate(limit=90, p=0.6),
                                           A.HorizontalFlip(p=0.7),
@@ -29,154 +24,62 @@ class BKAIDataset(Dataset):
         
         self.image_transform = A.Compose([A.Blur(p=0.4),
                                           A.RandomBrightnessContrast(p=0.8),
-                                          A.CLAHE(p=0.5)])   
+                                          A.CLAHE(p=0.5)])
+
+        self.split_txt = f"{self.base_dir}/{split}.txt"
+        with open(self.split_txt, "r") as f:
+            file_list = f.readlines()
+
+        self.file_list = [x.strip() for x in file_list]   
+
+
+    def __len__(self):
+        return len(self.file_list)
         
 
     def __getitem__(self, index):
-        image, mask = self.load_img_mask(index)
+        file_name = self.file_list[index]
+        image_file_path = f"{self.base_dir}/train/{file_name}.jpeg"
+        mask_file_path = f"{self.base_dir}/train_gt/{file_name}.jpeg"
+        image, mask = load_img_mask(image_file_path, mask_file_path, self.size)
 
         if self.split == "train":
-            # transform_image, transform_mask = self.train_img_mask_transform(image, mask)
             prob = random.random()
             if prob < 0.3:
-                transform_image, transform_mask = self.train_img_mask_transform(image, mask)
+                transform_image, transform_mask = train_img_mask_transform(self.train_transform, image, mask)
+
             elif 0.3 < prob < 0.6:
-                transform_image, transform_mask = self.mosaic_augmentation(image, mask)
+                piecies = [[image, mask]]
+                while len(piecies) < 4:
+                    idx = random.randint(0, len(self.file_list)-1)
+                    file_name = self.file_list[idx]
+                    piece_image = f"{self.base_dir}/train/{file_name}.jpeg"
+                    piece_mask = f"{self.base_dir}/train_gt/{file_name}.jpeg"
+
+                    piece_image, piece_mask = load_img_mask(piece_image, piece_mask, self.size)
+                    transform_image, transform_mask = train_img_mask_transform(self.train_transform, piece_image, piece_mask)
+                    piecies.append([transform_image, transform_mask])
+
+                transform_image, transform_mask = mosaic_augmentation(piecies, self.size)
+
             else:
-                transform_image, transform_mask = self.cutmix_augmentation(image, mask)
+                idx = random.randint(0, len(self.file_list)-1)
+                file_name = self.file_list[idx]
+                piece_image = f"{self.base_dir}/train/{file_name}.jpeg"
+                piece_mask = f"{self.base_dir}/train_gt/{file_name}.jpeg"
+
+                piece_image, piece_mask = load_img_mask(piece_image, piece_mask, self.size)
+
+                transform_image, transform_mask = cutmix_augmentation(image, mask, piece_image, piece_mask)
 
             if random.random() > 0.5:
-                transform_image = self.train_image_transform(image)
+                transform_image = train_image_transform(self.image_transform, image)
         
         else:
             transform_image = image
             transform_mask = mask
         
-        transform_image = self.normalize(transform_image)
-        transform_mask = self.encode_mask(transform_mask)
+        transform_image = normalize(transform_image, self.mean, self.std)
+        transform_mask = encode_mask(transform_mask)
 
         return transform_image, transform_mask
-    
-
-    def __len__(self):
-        return len(self.file_list)
-
-
-    def normalize(self, image):
-        image = np.array(image).astype(np.float32)
-        image /= 255.0
-        image -= self.mean
-        image /= self.std
-
-        image = np.transpose(image, (2, 0, 1)) ## H, W, C -> C, H, W
-
-        return image
-
-    
-    def load_img_mask(self, index):
-        file_name = self.file_list[index]
-        image = cv2.imread(f"{self.base_dir}/train/{file_name}.jpeg")
-        mask = cv2.imread(f"{self.base_dir}/train_mask/{file_name}.jpeg") 
-        
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
-
-        image = cv2.resize(image, (self.size, self.size))
-        mask = cv2.resize(mask, (self.size, self.size))
-
-        return image, mask
-
-
-    def encode_mask(self, mask):
-        label_transformed = np.zeros(shape=mask.shape[:-1], dtype=np.uint8)
-
-        red_mask = mask[:, :, 0] >= 100
-        label_transformed[red_mask] = 1
-
-        green_mask = mask[:, :, 1] >= 100
-        label_transformed[green_mask] = 2
-
-        return label_transformed
-    
-
-    def train_img_mask_transform(self, image, mask):     
-        transformed = self.train_transform(image=image, mask=mask)
-        transformed_image, transformed_mask = transformed["image"], transformed["mask"]
-
-        return transformed_image, transformed_mask
-    
-
-    def mosaic_augmentation(self, image, mask):
-        h, w = self.size, self.size
-        mosaic_img = np.zeros((h, w, 3), dtype=np.uint8)
-        mosaic_mask = np.zeros((h, w, 3), dtype=np.uint8)
-        cx, cy = random.randint(w//4, 3*w//4), random.randint(h//4, 3*h//4)
-
-        candidates = []
-        is_full = False
-        while not is_full:
-            idx = random.randint(0, len(self.file_list)-1)
-
-            if not idx in candidates:
-                candidates.append(idx)
-
-            if len(candidates) < 4:
-                is_full = True
-        
-        indices = [0, 1, 2, 3]
-        random.shuffle(indices)
-        for i, index in enumerate(indices):
-            image, mask = self.load_img_mask(index)
-            
-            if i == 0:
-                mosaic_img[:cy, :cx] = cv2.resize(image, (cx, cy))
-                mosaic_mask[:cy, :cx] = cv2.resize(mask, (cx, cy))
-            elif i == 1:
-                mosaic_img[:cy, cx:] = cv2.resize(image, (w-cx, cy))
-                mosaic_mask[:cy, cx:] = cv2.resize(mask, (w-cx, cy))
-            elif i == 2:
-                mosaic_img[cy:, :cx] = cv2.resize(image, (cx, h-cy))
-                mosaic_mask[cy:, :cx] = cv2.resize(mask, (cx, h-cy))
-            elif i == 3:
-                mosaic_img[cy:, cx:] = cv2.resize(image, (w-cx, h-cy))
-                mosaic_mask[cy:, cx:] = cv2.resize(mask, (w-cx, h-cy))
-        
-        return mosaic_img, mosaic_mask
-
-
-    def train_image_transform(self, image):     
-        transformed = self.image_transform(image=image)
-        transformed_image = transformed["image"]
-
-        return transformed_image
-    
-
-    def cutmix_augmentation(self, image, mask):
-        idx = random.randint(0, len(self.file_list) - 1)
-        mix_image, mix_mask = self.load_img_mask(idx)
-
-        lam = np.clip(np.random.beta(1.0, 1.0), 0.2, 0.8)
-        bbx1, bby1, bbx2, bby2 = self.rand_bbox(image.shape, lam)
-
-        image[bbx1:bbx2, bby1:bby2] = mix_image[bbx1:bbx2, bby1:bby2]
-        mask[bbx1:bbx2, bby1:bby2] = mix_mask[bbx1:bbx2, bby1:bby2]
-
-        return image, mask
-
-
-    def rand_bbox(self, size, lam):
-        W = size[1]
-        H = size[0]
-        cut_rat = np.sqrt(1. - lam)
-        cut_w = np.int64(W * cut_rat)
-        cut_h = np.int64(H * cut_rat)
-
-        cx = np.random.randint(W)
-        cy = np.random.randint(H)
-
-        bbx1 = np.clip(cx - cut_w // 2, 0, W)
-        bby1 = np.clip(cy - cut_h // 2, 0, H)
-        bbx2 = np.clip(cx + cut_w // 2, 0, W)
-        bby2 = np.clip(cy + cut_h // 2, 0, H)
-
-        return bbx1, bby1, bbx2, bby2

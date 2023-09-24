@@ -1,11 +1,18 @@
 ## dirs
 data_dir: "/home/pervinco/Datasets/BKAI_IGH_NeoPolyp"
-save_dir: "/home/pervinco/Models/BKAI_IGH_NeoPolyp/TransResUNet"
+save_dir: "./runs"
+train: "train1"
+valid: "valid1"
+test: "test"
 pretrain_weight: "" #"/home/pervinco/TransResUNet/checkpoint-BKAI-IGH.pth"
+test_weight: ""
 
 ## backbone
 backbone: "resnet152"
 num_layers: 2 ## encoder layers
+
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]
 
 ## hyp-params
 epochs: 500
@@ -21,7 +28,7 @@ num_classes: 3
 crossentropy: True
 
 ## lr scheduler
-scheduler: True
+scheduler: "decay"
 max_lr: 0.001
 pct_start: 0.8
 

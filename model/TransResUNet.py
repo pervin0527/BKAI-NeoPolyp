@@ -147,8 +147,8 @@ class TResUnet(nn.Module):
 
         """ ResNet50 """
         if backbone.lower() == "resnet50":
-            backbone = resnet50()
-            # backbone = models.resnet50(weights="IMAGENET1K_V2")
+            # backbone = resnet50()
+            backbone = models.resnet50(weights="IMAGENET1K_V2")
         elif backbone.lower() == "resnet101":
             # backbone = resnet101()
             backbone = models.resnet101(weights="IMAGENET1K_V2")
@@ -171,7 +171,8 @@ class TResUnet(nn.Module):
         self.d3 = DecoderBlock([128, 64], 64)
         self.d4 = DecoderBlock([64, 3], 32)
 
-        self.output = nn.Conv2d(32, 3, kernel_size=1)
+        self.logits = nn.Conv2d(32, 3, kernel_size=1)
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x, heatmap=None):
         s0 = x
@@ -190,7 +191,8 @@ class TResUnet(nn.Module):
         d3 = self.d3(d2, s1)
         d4 = self.d4(d3, s0)
 
-        y = self.output(d4)
+        y = self.logits(d4)
+        y = self.softmax(y)
 
         if heatmap != None:
             hmap = save_feats_mean(d4)

@@ -7,13 +7,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from glob import glob
-from data.BKAIDataset import BKAIDataset
+from data.batch_preprocess import *
 
 
-def predict(epoch, config, img_size, model, device):
+def decode_mask(pred_mask):
+        decoded_mask = np.zeros((pred_mask.shape[0], pred_mask.shape[1], 3), dtype=np.uint8)
+        decoded_mask[pred_mask == 0] = [0, 0, 0]
+        decoded_mask[pred_mask == 1] = [0, 255, 0] ## Green
+        decoded_mask[pred_mask == 2] = [255, 0, 0] ## Red
+        
+        return decoded_mask
+
+
+def predict(epoch, config, model, device):
     model.eval()
 
-    dataset = BKAIDataset(config["data_dir"], split="valid", size=config["img_size"])
     data_dir = config["data_dir"]
     save_dir = config["save_dir"]
     num_samples = config["num_pred_samples"]
@@ -30,38 +38,42 @@ def predict(epoch, config, img_size, model, device):
     fig, axes = plt.subplots(num_samples, 2, figsize=(10, 25))
     for idx, sample in enumerate(samples):
         file = sample.strip()
+        img_path = f"{data_dir}/train/{file}.jpeg"
+        mask_path = f"{data_dir}/train_gt/{file}.jpeg"
 
-        image = cv2.imread(f"{data_dir}/train/{file}.jpeg")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        mask = cv2.imread(f"{data_dir}/train_gt/{file}.jpeg")
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+        image, mask = load_img_mask(img_path, mask_path, size=config["img_size"])
         
-        overlayed = cv2.addWeighted(image, 0.7, mask, 0.3, 0)
-
-        x = cv2.resize(image, (img_size, img_size))
-        x = dataset.normalize(x)
+        x = normalize(image, config["mean"], config["std"])
         x = np.expand_dims(x, 0)
         x = torch.from_numpy(x).to(device)
 
         y_pred = model(x)
         pred_mask = torch.argmax(y_pred[0], dim=0).cpu().numpy()
+        
+        decoded_mask = decode_mask(pred_mask)
+        decoded_mask = cv2.resize(decoded_mask, (mask.shape[1], mask.shape[0]))
 
-        color_decoded = np.zeros((pred_mask.shape[0], pred_mask.shape[1], 3), dtype=np.uint8)
-        color_decoded[pred_mask == 0] = [0, 0, 0]
-        color_decoded[pred_mask == 1] = [255, 0, 0]
-        color_decoded[pred_mask == 2] = [0, 255, 0]
-        color_decoded = cv2.resize(color_decoded, (mask.shape[1], mask.shape[0]))
-
+        overlayed = cv2.addWeighted(image, 0.7, mask, 0.3, 0)
         axes[idx, 0].imshow(overlayed)
         axes[idx, 0].set_title("Original Mask")
 
-        axes[idx, 1].imshow(color_decoded)
+        axes[idx, 1].imshow(decoded_mask)
         axes[idx, 1].set_title("Predict Mask")
 
     plt.tight_layout()
     plt.savefig(f"{save_dir}/predict/epoch_{epoch:>04}.png")
     plt.close()
+
+
+def make_test_txt(dir, split_name):
+    files = sorted(glob(f"{dir}/{split_name}/*.jpeg"))
+    with open(f"{dir}/test.txt", "w") as f:
+        for idx, file in enumerate(files):
+            name = file.split('/')[-1].split('.')
+            f.write(name)
+
+            if idx != len(files):
+                f.write("\n")
 
 
 def epoch_time(start_time, end_time):

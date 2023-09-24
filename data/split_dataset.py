@@ -29,12 +29,16 @@ def split_file_list(spliters):
 if __name__ == "__main__":
     dir = "/home/pervinco/Datasets/BKAI_IGH_NeoPolyp"
 
-    red_split = [555, 139]
-    green_split = [206, 51]
-    rng_split = [39, 10]
+    # red_split = [555, 139] ## 694
+    # green_split = [206, 51] ## 257
+    # rng_split = [39, 10] ## 49
+
+    red_split = [200, 494]
+    green_split = [200, 57]
+    rng_split = [20, 29]
 
     train, valid = split_file_list([red_split, green_split, rng_split])
     print(len(train), len(valid))
 
-    write_file("train", train)
-    write_file("valid", valid)
+    write_file("train1", train)
+    write_file("valid1", valid)

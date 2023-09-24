@@ -1,4 +1,6 @@
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import time
 import yaml
 import torch
@@ -7,8 +9,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from datetime import datetime
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
-from metric.losses import DiceLoss, TverskyLoss
+from metric.losses import DiceLoss
 from model.TransResUNet import TResUnet
 from data.BKAIDataset import BKAIDataset
 from utils import epoch_time, predict, save_config_to_yaml
@@ -37,7 +40,6 @@ def train(model, dataloader, optimizer, loss_fn, device):
     model.train()
 
     epoch_loss = 0
-    epoch_acc = 0
     for idx, (x, y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
         x = x.to(device, dtype=torch.float32)
         y = y.to(device, dtype=torch.float32)
@@ -64,8 +66,8 @@ if __name__ == "__main__":
     num_workers = min([os.cpu_count(), config["batch_size"] if config["batch_size"] > 1 else 0, 8])
 
     ## Load Dataset
-    train_dataset = BKAIDataset(config["data_dir"], split="train", size=config["img_size"])
-    valid_dataset = BKAIDataset(config["data_dir"], split="valid", size=config["img_size"])
+    train_dataset = BKAIDataset(config=config, split=config["train"])
+    valid_dataset = BKAIDataset(config=config, split=config["valid"])
 
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=config["batch_size"], shuffle=True, num_workers=num_workers)
     valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=config["batch_size"], num_workers=num_workers)
@@ -87,27 +89,25 @@ if __name__ == "__main__":
 
         model.load_state_dict(saved_weights, strict=False)
 
-        # for name, param in model.named_parameters():
-        #     print(f"{name} {param.requires_grad}")
-
     ## Loss Function
     loss_fn = DiceLoss(num_classes=config["num_classes"], crossentropy=config["crossentropy"])
-    loss_fn = TverskyLoss(num_classes=config["num_classes"], alpha=0.7, beta=0.3)
 
     ## Optimizer & LR Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config["initial_lr"], betas=config["betas"], weight_decay=config["weight_decay"])
-    if config["scheduler"]:
+    if config["scheduler"] == "decay":
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, verbose=True)
-        # div_factor = config["max_lr"] / config["initial_lr"]
-        # final_div_factor = config["max_lr"] / config["initial_lr"]
-        # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, 
-        #                                                 anneal_strategy="cos",
-        #                                                 max_lr=config["max_lr"],
-        #                                                 total_steps=config["epochs"],
-        #                                                 pct_start=config["pct_start"],
-        #                                                 div_factor=div_factor,
-        #                                                 final_div_factor=final_div_factor,
-        #                                                 verbose=True)
+
+    elif config["scheduler"] == "onecycle":
+        div_factor = config["max_lr"] / config["initial_lr"]
+        final_div_factor = config["max_lr"] / config["initial_lr"]
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, 
+                                                        anneal_strategy="cos",
+                                                        max_lr=config["max_lr"],
+                                                        total_steps=config["epochs"],
+                                                        pct_start=config["pct_start"],
+                                                        div_factor=div_factor,
+                                                        final_div_factor=final_div_factor,
+                                                        verbose=True)
 
 
     ## make save dir
@@ -120,13 +120,18 @@ if __name__ == "__main__":
         config["save_dir"] = save_path
         os.makedirs(f"{save_path}/weights")
         os.makedirs(f"{save_path}/predict")
+        os.makedirs(f"{save_path}/logs")
     
     save_config_to_yaml(config, save_path)
 
-    early_stopping_count = 0
-    patience = config["early_stopping_patience"]
+
     ## Train start
     print("\nTrain Start.")
+    writer = SummaryWriter(log_dir=f"{save_path}/logs")
+    
+    early_stopping_count = 0
+    patience = config["early_stopping_patience"]
+
     best_valid_loss = float("inf")
     epochs = config["epochs"]
     for epoch in range(epochs):
@@ -138,6 +143,10 @@ if __name__ == "__main__":
 
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+
+        writer.add_scalar("Loss/Train", train_loss, epoch)
+        writer.add_scalar("Loss/Valid", valid_loss, epoch)        
+        writer.add_scalar("Learning_Rate", current_lr, epoch)
 
         data_str = f"Epoch [{epoch+1:02}/{epochs}] | Epoch Time: {epoch_mins}m {epoch_secs}s\n"
         data_str += f"\tCurrent Learning Rate: {current_lr} \n"
@@ -155,12 +164,16 @@ if __name__ == "__main__":
             data_str += f"\tLoss not decreased. {best_valid_loss:.4f} Remaining patience: [{early_stopping_count}/{patience}] \n"
             early_stopping_count += 1
 
-        if config["scheduler"]:
+        if config["scheduler"] == "decay":
             scheduler.step(valid_loss)
+        elif config["scheduler"] == "onecycle":
+            scheduler.step()
 
         print(data_str)
-        predict(epoch + 1, config, img_size=config["img_size"], model=model, device=device)
+        predict(epoch + 1, config, model=model, device=device)
 
         if early_stopping_count == config["early_stopping_patience"]:
             print("Early Stop.\n")
             break
+    
+    writer.close()
