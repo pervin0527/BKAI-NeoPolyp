@@ -12,15 +12,17 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from metric.losses import DiceLoss
+from metric.scores import MultiClassDiceScore
 from model.TransResUNet import TResUnet
 from data.BKAIDataset import BKAIDataset
 from utils import epoch_time, predict, save_config_to_yaml
 
 
-def eval(model, dataloader, loss_fn, device):
+def eval(model, dataloader, loss_fn, acc_fn, device):
     model.eval()
 
     epoch_loss = 0
+    epoch_acc = 0
     with torch.no_grad():
         for idx, (x, y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
             x = x.to(device, dtype=torch.float32)
@@ -28,18 +30,22 @@ def eval(model, dataloader, loss_fn, device):
 
             y_pred = model(x)
             loss = loss_fn(y_pred, y.long())
-
             epoch_loss += loss.item()
 
+            acc = acc_fn(y_pred, y.long())
+            epoch_acc += acc.item()
+
     epoch_loss = epoch_loss / len(dataloader)
+    epoch_acc = epoch_acc / len(dataloader)
 
-    return epoch_loss
+    return epoch_loss, epoch_acc
 
 
-def train(model, dataloader, optimizer, loss_fn, device):
+def train(model, dataloader, optimizer, loss_fn, acc_fn, device):
     model.train()
 
     epoch_loss = 0
+    epoch_acc = 0
     for idx, (x, y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
         x = x.to(device, dtype=torch.float32)
         y = y.to(device, dtype=torch.float32)
@@ -49,12 +55,15 @@ def train(model, dataloader, optimizer, loss_fn, device):
         loss = loss_fn(y_pred, y.long())
         loss.backward()
         optimizer.step()
-
         epoch_loss += loss.item()
 
-    epoch_loss = epoch_loss / len(dataloader)
+        acc = acc_fn(y_pred, y.long())
+        epoch_acc += acc.item()
 
-    return epoch_loss
+    epoch_loss = epoch_loss / len(dataloader)
+    epoch_acc = epoch_acc / len(dataloader)
+
+    return epoch_loss, epoch_acc
 
 
 if __name__ == "__main__":
@@ -90,7 +99,8 @@ if __name__ == "__main__":
         model.load_state_dict(saved_weights, strict=False)
 
     ## Loss Function
-    loss_fn = DiceLoss(num_classes=config["num_classes"], crossentropy=config["crossentropy"])
+    loss_fn = DiceLoss(crossentropy=config["crossentropy"])
+    acc_fn = MultiClassDiceScore()
 
     ## Optimizer & LR Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config["initial_lr"], betas=config["betas"], weight_decay=config["weight_decay"])
@@ -138,8 +148,8 @@ if __name__ == "__main__":
         start_time = time.time()
 
         current_lr = optimizer.param_groups[0]['lr']
-        train_loss = train(model, train_dataloader, optimizer, loss_fn, device)
-        valid_loss = eval(model, valid_dataloader, loss_fn, device)
+        train_loss, train_acc = train(model, train_dataloader, optimizer, loss_fn, acc_fn, device)
+        valid_loss, valid_acc = eval(model, valid_dataloader, loss_fn, acc_fn, device)
 
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -150,8 +160,8 @@ if __name__ == "__main__":
 
         data_str = f"Epoch [{epoch+1:02}/{epochs}] | Epoch Time: {epoch_mins}m {epoch_secs}s\n"
         data_str += f"\tCurrent Learning Rate: {current_lr} \n"
-        data_str += f"\tTrain Loss: {train_loss:.4f} \n"
-        data_str += f"\tValid Loss: {valid_loss:.4f} \n"
+        data_str += f"\tTrain Loss: {train_loss:.4f} | Train_Acc: {train_acc:.4f} \n"
+        data_str += f"\tValid Loss: {valid_loss:.4f} | Valid_Acc: {valid_acc:.4f} \n"
 
         if valid_loss < best_valid_loss:
             data_str += f"\tLoss decreased. {best_valid_loss:.4f} ---> {valid_loss:.4f} \n"

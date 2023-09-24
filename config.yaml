@@ -1,8 +1,8 @@
 ## dirs
 data_dir: "/home/pervinco/Datasets/BKAI_IGH_NeoPolyp"
 save_dir: "./runs"
-train: "train1"
-valid: "valid1"
+train: "train_sub"
+valid: "valid_sub"
 test: "test"
 pretrain_weight: "" #"/home/pervinco/TransResUNet/checkpoint-BKAI-IGH.pth"
 test_weight: ""
