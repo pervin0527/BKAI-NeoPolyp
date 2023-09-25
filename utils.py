@@ -9,6 +9,13 @@ import matplotlib.pyplot as plt
 from glob import glob
 from data.batch_preprocess import *
 
+def decode_image(image):
+    image = np.transpose(image, (1, 2, 0))
+    image = image * 255
+    image = image.astype(np.uint8)
+
+    return image
+
 
 def decode_mask(pred_mask):
         decoded_mask = np.zeros((pred_mask.shape[0], pred_mask.shape[1], 3), dtype=np.uint8)
@@ -42,7 +49,6 @@ def predict(epoch, config, model, device):
         mask_path = f"{data_dir}/train_gt/{file}.jpeg"
 
         image, mask = load_img_mask(img_path, mask_path, size=config["img_size"])
-        
         x = normalize(image, config["mean"], config["std"])
         x = np.expand_dims(x, 0)
         x = torch.from_numpy(x).to(device)
@@ -108,20 +114,19 @@ def encode_mask(mask, threshold):
     return label_transformed
 
 
-def calculate_effective_samples(config):
-    beta = 0.9999
-    class_pixels = [0] * config["num_classes"]
-    mask_dir = config["data_dir"] + "/train_gt"
-    mask_files = sorted(glob(f"{mask_dir}/*.jpeg"))
+def visualize(images, masks):
+    assert len(images) == len(masks), "Length of images and masks should be the same."
 
-    for file in mask_files:
-        mask = cv2.imread(file)
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
-        encoded_mask = encode_mask(mask, config["mask_threshold"])
-
-        for i in range(3):
-            class_pixels[i] += (encoded_mask == i).sum().item()
-
-    effective_samples = [(1.0 - beta) / (1.0 - beta**count) for count in class_pixels]
-
-    return torch.tensor(effective_samples, dtype=torch.float32)
+    num_rows = len(images)
+    plt.figure(figsize=(10, 4 * num_rows))
+    
+    for idx, (image, mask) in enumerate(zip(images, masks)):
+        # Image
+        plt.subplot(num_rows, 2, 2 * idx + 1)
+        plt.imshow(image)
+        plt.title(f"Image {idx + 1}")
+        
+        # Mask
+        plt.subplot(num_rows, 2, 2 * idx + 2)
+        plt.imshow(mask)
+        plt.title(f"Mask {idx + 1}")

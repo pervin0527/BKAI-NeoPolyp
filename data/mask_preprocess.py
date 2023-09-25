@@ -19,22 +19,28 @@ def read_txt(path):
 
 def encode_mask(mask, split=None, threshold=50):
     label_transformed = np.zeros(shape=mask.shape, dtype=np.uint8)
-
+    
     if split == "red":
         red_mask = mask[:, :, 0] >= threshold
-        label_transformed[red_mask] = [255, 0, 0] ## 1
-
+        label_transformed[red_mask] = [1, 0, 0]
+        
     elif split == "green":
         green_mask = mask[:, :, 1] >= threshold
-        label_transformed[green_mask] = [0, 255, 0] ## 2
-
+        label_transformed[green_mask] = [0, 1, 0]
+        
     elif split == "rng":
         red_mask = mask[:, :, 0] >= threshold
-        label_transformed[red_mask] = [255, 0, 0] ## 1
+        label_transformed[red_mask] = [1, 0, 0]
+        
         green_mask = mask[:, :, 1] >= threshold
-        label_transformed[green_mask] = [0, 255, 0] ## 2
+        label_transformed[green_mask] = [0, 1, 0]
+
+    # 이진화 처리된 마스크 값을 원래의 색상으로 변환
+    label_transformed[label_transformed[:, :, 0] == 1] = [255, 0, 0]
+    label_transformed[label_transformed[:, :, 1] == 1] = [0, 255, 0]
 
     return label_transformed
+
 
 
 def make_train_mask(total):

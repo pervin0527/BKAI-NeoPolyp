@@ -4,17 +4,16 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import time
 import yaml
 import torch
-import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from datetime import datetime
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from metric.losses import DiceLoss
-from metric.scores import MultiClassDiceScore
 from model.TransResUNet import TResUnet
 from data.BKAIDataset import BKAIDataset
+from metric.losses import DiceLoss
+from metric.scores import MultiClassDiceScore
 from utils import epoch_time, predict, save_config_to_yaml
 
 
@@ -24,7 +23,7 @@ def eval(model, dataloader, loss_fn, acc_fn, device):
     epoch_loss = 0
     epoch_acc = 0
     with torch.no_grad():
-        for idx, (x, y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
+        for idx, (_, _, x, y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
             x = x.to(device, dtype=torch.float32)
             y = y.to(device, dtype=torch.float32)
 
@@ -46,7 +45,7 @@ def train(model, dataloader, optimizer, loss_fn, acc_fn, device):
 
     epoch_loss = 0
     epoch_acc = 0
-    for idx, (x, y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
+    for idx, (_, _, x, y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
         x = x.to(device, dtype=torch.float32)
         y = y.to(device, dtype=torch.float32)
 
@@ -105,7 +104,7 @@ if __name__ == "__main__":
     ## Optimizer & LR Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config["initial_lr"], betas=config["betas"], weight_decay=config["weight_decay"])
     if config["scheduler"] == "decay":
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config["patience"], verbose=True)
 
     elif config["scheduler"] == "onecycle":
         div_factor = config["max_lr"] / config["initial_lr"]
