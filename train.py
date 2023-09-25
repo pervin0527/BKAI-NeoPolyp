@@ -14,7 +14,7 @@ from model.TransResUNet import TResUnet
 from data.BKAIDataset import BKAIDataset
 from metric.losses import DiceLoss
 from metric.scores import MultiClassDiceScore
-from utils import epoch_time, predict, save_config_to_yaml
+from utils import epoch_time, predict, save_config_to_yaml, print_and_save, save_visualization
 
 
 def eval(model, dataloader, loss_fn, acc_fn, device):
@@ -23,15 +23,15 @@ def eval(model, dataloader, loss_fn, acc_fn, device):
     epoch_loss = 0
     epoch_acc = 0
     with torch.no_grad():
-        for idx, (_, _, x, y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
-            x = x.to(device, dtype=torch.float32)
-            y = y.to(device, dtype=torch.float32)
+        for idx, (origin_x, origin_y, batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
+            batch_x = batch_x.to(device, dtype=torch.float32)
+            batch_y = batch_y.to(device, dtype=torch.float32)
 
-            y_pred = model(x)
-            loss = loss_fn(y_pred, y.long())
+            y_pred = model(batch_x)
+            loss = loss_fn(y_pred, batch_y.long())
             epoch_loss += loss.item()
 
-            acc = acc_fn(y_pred, y.long())
+            acc = acc_fn(y_pred, batch_y.long())
             epoch_acc += acc.item()
 
     epoch_loss = epoch_loss / len(dataloader)
@@ -40,23 +40,25 @@ def eval(model, dataloader, loss_fn, acc_fn, device):
     return epoch_loss, epoch_acc
 
 
-def train(model, dataloader, optimizer, loss_fn, acc_fn, device):
+def train(epoch, model, dataloader, optimizer, loss_fn, acc_fn, device, fig_dir):
     model.train()
 
     epoch_loss = 0
     epoch_acc = 0
-    for idx, (_, _, x, y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
-        x = x.to(device, dtype=torch.float32)
-        y = y.to(device, dtype=torch.float32)
+    for idx, (origin_x, origin_y, batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
+        # save_visualization(epoch, idx, origin_x, origin_y, batch_x, batch_y, fig_dir)
+
+        batch_x = batch_x.to(device, dtype=torch.float32)
+        batch_y = batch_y.to(device, dtype=torch.float32)
 
         optimizer.zero_grad()
-        y_pred = model(x)
-        loss = loss_fn(y_pred, y.long())
+        y_pred = model(batch_x)
+        loss = loss_fn(y_pred, batch_y.long())
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
 
-        acc = acc_fn(y_pred, y.long())
+        acc = acc_fn(y_pred, batch_y.long())
         epoch_acc += acc.item()
 
     epoch_loss = epoch_loss / len(dataloader)
@@ -130,6 +132,7 @@ if __name__ == "__main__":
         os.makedirs(f"{save_path}/weights")
         os.makedirs(f"{save_path}/predict")
         os.makedirs(f"{save_path}/logs")
+        os.makedirs(f"{save_path}/batch")
     
     save_config_to_yaml(config, save_path)
 
@@ -147,14 +150,16 @@ if __name__ == "__main__":
         start_time = time.time()
 
         current_lr = optimizer.param_groups[0]['lr']
-        train_loss, train_acc = train(model, train_dataloader, optimizer, loss_fn, acc_fn, device)
+        train_loss, train_acc = train(epoch, model, train_dataloader, optimizer, loss_fn, acc_fn, device, f"{save_path}/batch")
         valid_loss, valid_acc = eval(model, valid_dataloader, loss_fn, acc_fn, device)
 
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         writer.add_scalar("Loss/Train", train_loss, epoch)
-        writer.add_scalar("Loss/Valid", valid_loss, epoch)        
+        writer.add_scalar("Loss/Valid", valid_loss, epoch)
+        writer.add_scalar("Accuracy/Train", train_acc, epoch)
+        writer.add_scalar("Accuracy/Valid", valid_acc, epoch)        
         writer.add_scalar("Learning_Rate", current_lr, epoch)
 
         data_str = f"Epoch [{epoch+1:02}/{epochs}] | Epoch Time: {epoch_mins}m {epoch_secs}s\n"
@@ -164,6 +169,7 @@ if __name__ == "__main__":
 
         if valid_loss < best_valid_loss:
             data_str += f"\tLoss decreased. {best_valid_loss:.4f} ---> {valid_loss:.4f} \n"
+            # print_and_save(f"{save_path}/logs", data_str)
             best_valid_loss = valid_loss
 
             torch.save(model.state_dict(), f"{save_path}/weights/best.pth")
@@ -178,11 +184,15 @@ if __name__ == "__main__":
         elif config["scheduler"] == "onecycle":
             scheduler.step()
 
-        print(data_str)
-        predict(epoch + 1, config, model=model, device=device)
+        # print_and_save(f"{save_path}/logs", data_str)
+        # predict(epoch + 1, config, model=model, device=device)
 
         if early_stopping_count == config["early_stopping_patience"]:
-            print("Early Stop.\n")
+            data_str = f"Early stopping: validation loss stops improving from last {patience} continously.\n"
+            # print_and_save(f"{save_path}/logs", data_str)
             break
+
+        print_and_save(f"{save_path}/logs/train_log.txt", data_str)
+        predict(epoch + 1, config, model=model, device=device)
     
     writer.close()

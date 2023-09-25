@@ -15,13 +15,14 @@ mean: [0.485, 0.456, 0.406]
 std: [0.229, 0.224, 0.225]
 
 ## hyp-params
+augment: True
 epochs: 500
 img_size: 256
 batch_size: 16
 initial_lr: 0.0001
 betas: [0.9, 0.999]
 momentum: 0.9
-weight_decay: 0.05 ## default 0.01
+weight_decay: 0.4 ## default 0.01
 
 ## Loss func
 num_classes: 3

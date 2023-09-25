@@ -130,3 +130,43 @@ def visualize(images, masks):
         plt.subplot(num_rows, 2, 2 * idx + 2)
         plt.imshow(mask)
         plt.title(f"Mask {idx + 1}")
+
+
+def save_visualization(epoch, batch_index, origin_x, origin_y, x_batch, y_batch, dir):
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+
+    os.makedirs(f"{dir}/{batch_index:02}")
+    for idx in range(x_batch.size(0)):
+        file_name = f"{epoch}_{batch_index}_{idx}.png"
+        original_image = origin_x[idx].numpy() ## 256, 256, 3
+        original_mask = origin_y[idx].numpy() ## 256, 256, 3
+
+        batch_image = decode_image(x_batch[idx].numpy())
+        batch_mask = decode_mask(y_batch[idx].numpy())
+
+        overlayed_original = cv2.addWeighted(original_image, 0.7, original_mask, 0.3, 0)
+        overlayed_batch = cv2.addWeighted(batch_image, 0.7, batch_mask, 0.3, 0)
+
+        plt.figure(figsize=(10, 4))
+        plt.subplot(2, 3, 1)
+        plt.imshow(original_image)
+        
+        plt.subplot(2, 3, 2)
+        plt.imshow(original_mask)
+        
+        plt.subplot(2, 3, 3)
+        plt.imshow(overlayed_original)
+
+        # Batch Images
+        plt.subplot(2, 3, 4)
+        plt.imshow(batch_image)
+        
+        plt.subplot(2, 3, 5)
+        plt.imshow(batch_mask)
+        
+        plt.subplot(2, 3, 6)
+        plt.imshow(overlayed_batch)
+
+        plt.tight_layout()  # Makes sure subplots do not overlap
+        plt.savefig(f"{dir}/{batch_index:02}/{file_name}")
+        plt.close()

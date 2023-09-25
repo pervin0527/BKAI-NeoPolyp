@@ -120,7 +120,8 @@ def cutmix_augmentation(image1, mask1, image2, mask2):
     return image1, mask1
 
 
-def crop_colors_from_mask_and_image(image, mask, margin=1):
+def crop_colors_from_mask_and_image(original_image, original_mask, margin=1):
+    image, mask = copy.deepcopy(original_image), copy.deepcopy(original_mask)
     red_mask = ((mask[:, :, 0] >= 200) & (mask[:, :, 0] <= 255)).astype(int)
     green_mask = ((mask[:, :, 1] >= 200) & (mask[:, :, 1] <= 255)).astype(int)
     
@@ -128,8 +129,6 @@ def crop_colors_from_mask_and_image(image, mask, margin=1):
     labeled_green, num_green = label(green_mask)
     
     red_crops, green_crops = [], []
-    
-    # Crop for each connected red component
     for i in range(1, num_red + 1):
         y, x = np.where(labeled_red == i)
         y_min, y_max, x_min, x_max = y.min(), y.max(), x.min(), x.max()
@@ -139,7 +138,6 @@ def crop_colors_from_mask_and_image(image, mask, margin=1):
         
         red_crops.append((cropped_img, cropped_mask))
     
-    # Crop for each connected green component
     for i in range(1, num_green + 1):
         y, x = np.where(labeled_green == i)
         y_min, y_max, x_min, x_max = y.min(), y.max(), x.min(), x.max()
@@ -171,11 +169,8 @@ def mixup(crops, image, mask, mixup_times=2, alpha=0.5, threshold=200):
 
             piece_transformed = piece_transform(image=crop_image, mask=crop_mask)
             t_piece_image, t_piece_mask = piece_transformed["image"], piece_transformed["mask"]
-
-            mixed = False
             height, width, _ = t_piece_image.shape
-            
-            # Define max attempts for random placements
+                
             max_attempts = 1000
             for _ in range(max_attempts):
                 i, j = random.randint(0, B_height - height - 1), random.randint(0, B_width - width - 1)
@@ -187,7 +182,6 @@ def mixup(crops, image, mask, mixup_times=2, alpha=0.5, threshold=200):
                     region_image = base_image[i:i+height, j:j+width]
                     base_image[i:i+height, j:j+width] = region_image * alpha + t_piece_image * (1 - alpha)
                     mixup_track_mask[i:i+height, j:j+width] = 1
-                    mixed = True
                     break
             
     base_transformed = base_transform(image=base_image, mask=base_mask)
