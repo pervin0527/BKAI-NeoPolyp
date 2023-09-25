@@ -8,8 +8,10 @@ class BKAIDataset(Dataset):
     def __init__(self, config, split):
         super().__init__()
         self.split = split
+        self.alpha = config["alpha"]
         self.size = config["img_size"]
         self.augment = config["augment"]
+        self.times = config["mixup_times"]
         self.base_dir = config["data_dir"]
         self.mean, self.std = config["mean"], config["std"]
 
@@ -63,7 +65,7 @@ class BKAIDataset(Dataset):
                 try:
                     r_crops, g_crops = crop_colors_from_mask_and_image(image, mask, margin=1)
                     total_crops = r_crops + g_crops
-                    transform_image, transform_mask = mixup(total_crops, image, mask)
+                    transform_image, transform_mask = mixup(total_crops, image, mask, mixup_times=self.times, alpha=self.alpha)
                 except:
                     transform_image, transform_mask = train_img_mask_transform(self.train_transform, image, mask)
         

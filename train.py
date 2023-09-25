@@ -106,7 +106,7 @@ if __name__ == "__main__":
     ## Optimizer & LR Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config["initial_lr"], betas=config["betas"], weight_decay=config["weight_decay"])
     if config["scheduler"] == "decay":
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config["patience"], verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=config["patience"], verbose=True)
 
     elif config["scheduler"] == "onecycle":
         div_factor = config["max_lr"] / config["initial_lr"]
