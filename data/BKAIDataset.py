@@ -9,6 +9,7 @@ class BKAIDataset(Dataset):
         super().__init__()
         self.split = split
         self.alpha = config["alpha"]
+        self.margin = config["margin"]
         self.size = config["img_size"]
         self.augment = config["augment"]
         self.times = config["mixup_times"]
@@ -37,7 +38,9 @@ class BKAIDataset(Dataset):
     def __getitem__(self, index):
         file_name = self.file_list[index]
         image_file_path = f"{self.base_dir}/train/{file_name}.jpeg"
-        mask_file_path = f"{self.base_dir}/train_gt/{file_name}.jpeg"
+        mask_file_path = f"{self.base_dir}/train_mask/{file_name}.jpeg"
+        # mask_file_path = f"{self.base_dir}/train_mask/{file_name}.png" ## mask, jpeg
+
         image, mask = load_img_mask(image_file_path, mask_file_path, self.size)
 
         if self.split == "train" and self.augment:
@@ -46,14 +49,15 @@ class BKAIDataset(Dataset):
             # if prob < 0.5:
                 transform_image, transform_mask = train_img_mask_transform(self.train_transform, image, mask)
 
-            elif 0.3 < prob < 0.7:
+            elif 0.3 < prob < 0.6:
             # elif 0.5 < prob:
                 piecies = [[image, mask]]
                 while len(piecies) < 4:
                     idx = random.randint(0, len(self.file_list)-1)
                     file_name = self.file_list[idx]
                     piece_image = f"{self.base_dir}/train/{file_name}.jpeg"
-                    piece_mask = f"{self.base_dir}/train_gt/{file_name}.jpeg"
+                    piece_mask = f"{self.base_dir}/train_mask/{file_name}.jpeg"
+                    # piece_mask = f"{self.base_dir}/train_mask/{file_name}.png" ## train_gt, jpeg
 
                     piece_image, piece_mask = load_img_mask(piece_image, piece_mask, self.size)
                     transform_image, transform_mask = train_img_mask_transform(self.train_transform, piece_image, piece_mask)
@@ -61,13 +65,8 @@ class BKAIDataset(Dataset):
 
                 transform_image, transform_mask = mosaic_augmentation(piecies, self.size)
 
-            elif 0.7 < prob < 1:
-                try:
-                    r_crops, g_crops = crop_colors_from_mask_and_image(image, mask, margin=1)
-                    total_crops = r_crops + g_crops
-                    transform_image, transform_mask = mixup(total_crops, image, mask, mixup_times=self.times, alpha=self.alpha)
-                except:
-                    transform_image, transform_mask = train_img_mask_transform(self.train_transform, image, mask)
+            elif 0.6 < prob < 1:
+                transform_image, transform_mask = spatially_exclusive_pasting(image, mask, alpha=self.alpha)
         
             batch_image = normalize(transform_image, self.mean, self.std)
             batch_mask = encode_mask(transform_mask)

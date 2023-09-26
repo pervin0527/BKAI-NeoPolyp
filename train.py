@@ -46,7 +46,8 @@ def train(epoch, model, dataloader, optimizer, loss_fn, acc_fn, device, fig_dir)
     epoch_loss = 0
     epoch_acc = 0
     for idx, (origin_x, origin_y, batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
-        # save_visualization(epoch, idx, origin_x, origin_y, batch_x, batch_y, fig_dir)
+        if config["save_batch"]:
+            save_visualization(epoch, idx, origin_x, origin_y, batch_x, batch_y, fig_dir)
 
         batch_x = batch_x.to(device, dtype=torch.float32)
         batch_y = batch_y.to(device, dtype=torch.float32)

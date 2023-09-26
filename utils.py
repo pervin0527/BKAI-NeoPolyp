@@ -46,7 +46,8 @@ def predict(epoch, config, model, device):
     for idx, sample in enumerate(samples):
         file = sample.strip()
         img_path = f"{data_dir}/train/{file}.jpeg"
-        mask_path = f"{data_dir}/train_gt/{file}.jpeg"
+        mask_path = f"{data_dir}/train_mask/{file}.jpeg"
+        # mask_path = f"{data_dir}/train_mask/{file}.png" ## train_gt, jpeg
 
         image, mask = load_img_mask(img_path, mask_path, size=config["img_size"])
         x = normalize(image, config["mean"], config["std"])
@@ -69,17 +70,6 @@ def predict(epoch, config, model, device):
     plt.tight_layout()
     plt.savefig(f"{save_dir}/predict/epoch_{epoch:>04}.png")
     plt.close()
-
-
-def make_test_txt(dir, split_name):
-    files = sorted(glob(f"{dir}/{split_name}/*.jpeg"))
-    with open(f"{dir}/test.txt", "w") as f:
-        for idx, file in enumerate(files):
-            name = file.split('/')[-1].split('.')
-            f.write(name)
-
-            if idx != len(files):
-                f.write("\n")
 
 
 def epoch_time(start_time, end_time):
@@ -121,23 +111,19 @@ def visualize(images, masks):
     plt.figure(figsize=(10, 4 * num_rows))
     
     for idx, (image, mask) in enumerate(zip(images, masks)):
-        # Image
         plt.subplot(num_rows, 2, 2 * idx + 1)
         plt.imshow(image)
         plt.title(f"Image {idx + 1}")
         
-        # Mask
         plt.subplot(num_rows, 2, 2 * idx + 2)
         plt.imshow(mask)
         plt.title(f"Mask {idx + 1}")
 
 
 def save_visualization(epoch, batch_index, origin_x, origin_y, x_batch, y_batch, dir):
-    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-
-    os.makedirs(f"{dir}/{batch_index:02}")
     for idx in range(x_batch.size(0)):
         file_name = f"{epoch}_{batch_index}_{idx}.png"
+        
         original_image = origin_x[idx].numpy() ## 256, 256, 3
         original_mask = origin_y[idx].numpy() ## 256, 256, 3
 
@@ -147,26 +133,9 @@ def save_visualization(epoch, batch_index, origin_x, origin_y, x_batch, y_batch,
         overlayed_original = cv2.addWeighted(original_image, 0.7, original_mask, 0.3, 0)
         overlayed_batch = cv2.addWeighted(batch_image, 0.7, batch_mask, 0.3, 0)
 
-        plt.figure(figsize=(10, 4))
-        plt.subplot(2, 3, 1)
-        plt.imshow(original_image)
+        top_row = np.hstack((original_image, original_mask, overlayed_original))
+        bottom_row = np.hstack((batch_image, batch_mask, overlayed_batch))
         
-        plt.subplot(2, 3, 2)
-        plt.imshow(original_mask)
-        
-        plt.subplot(2, 3, 3)
-        plt.imshow(overlayed_original)
+        final_image = np.vstack((top_row, bottom_row))
 
-        # Batch Images
-        plt.subplot(2, 3, 4)
-        plt.imshow(batch_image)
-        
-        plt.subplot(2, 3, 5)
-        plt.imshow(batch_mask)
-        
-        plt.subplot(2, 3, 6)
-        plt.imshow(overlayed_batch)
-
-        plt.tight_layout()  # Makes sure subplots do not overlap
-        plt.savefig(f"{dir}/{batch_index:02}/{file_name}")
-        plt.close()
+        cv2.imwrite(f"{dir}/{file_name}", cv2.cvtColor(final_image, cv2.COLOR_RGB2BGR))

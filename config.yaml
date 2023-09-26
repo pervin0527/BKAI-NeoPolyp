@@ -5,7 +5,8 @@ train: "train"
 valid: "valid"
 test: "test"
 pretrain_weight: "" #"/home/pervinco/TransResUNet/checkpoint-BKAI-IGH.pth"
-test_weight: ""
+test_weight: "/home/pervinco/BKAI-NeoPolyp/runs/2023-09-26_17-15-41/weights/best.pth"
+save_batch: False
 
 ## backbone
 backbone: "resnet50"
@@ -18,14 +19,15 @@ std: [0.229, 0.224, 0.225]
 augment: True
 epochs: 500
 img_size: 256
-batch_size: 16
+batch_size: 32
 initial_lr: 0.0001
 betas: [0.9, 0.999]
 momentum: 0.9
 weight_decay: 0.01 ## default 0.01
 
-mixup_times: 2
+margin: 20
 alpha: 0.8
+mixup_times: 2
 
 ## Loss func
 num_classes: 3
