@@ -111,13 +111,14 @@ def rand_bbox(size, lam):
 
 
 def cutmix_augmentation(image1, mask1, image2, mask2):
+    i1, i2, m1, m2 = copy.deepcopy(image1), copy.deepcopy(image2), copy.deepcopy(mask1), copy.deepcopy(mask2)
     lam = np.clip(np.random.beta(1.0, 1.0), 0.2, 0.8)
-    bbx1, bby1, bbx2, bby2 = rand_bbox(image1.shape, lam)
+    bbx1, bby1, bbx2, bby2 = rand_bbox(i1.shape, lam)
 
-    image1[bbx1:bbx2, bby1:bby2] = image2[bbx1:bbx2, bby1:bby2]
-    mask1[bbx1:bbx2, bby1:bby2] = mask2[bbx1:bbx2, bby1:bby2]
+    i1[bbx1:bbx2, bby1:bby2] = i2[bbx1:bbx2, bby1:bby2]
+    m1[bbx1:bbx2, bby1:bby2] = m2[bbx1:bbx2, bby1:bby2]
 
-    return image1, mask1
+    return i1, m1
 
 
 def spatially_exclusive_pasting(image, mask, alpha=0.7, iterations=10):
