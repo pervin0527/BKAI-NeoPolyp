@@ -19,15 +19,18 @@ std: [0.229, 0.224, 0.225]
 augment: True
 epochs: 500
 img_size: 256
-batch_size: 32
+
+batch_size: 16
+red_size: 4
+green_size: 8
+rng_size: 4
+
 initial_lr: 0.0001
 betas: [0.9, 0.999]
 momentum: 0.9
 weight_decay: 0.01 ## default 0.01
 
-margin: 20
-alpha: 0.8
-mixup_times: 2
+spatial_alpha: 0.45
 
 ## Loss func
 num_classes: 3

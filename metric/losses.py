@@ -13,18 +13,15 @@ class DiceLoss(nn.Module):
         self.weight = weight
 
     def forward(self, y_pred, y_true):
-        # y_pred = F.softmax(y_pred, dim=1)
-        y_true = F.one_hot(y_true, num_classes=y_pred.size(1)).permute(0, 3, 1, 2).float()
-
         intersection = torch.sum(y_pred * y_true, dim=(0, 2, 3)) + self.eps
         union = torch.sum(y_pred, dim=(0, 2, 3)) + torch.sum(y_true, dim=(0, 2, 3)) + self.eps
 
         dice_coefficients = (2.0 * intersection) / union
         dice_loss = 1. - dice_coefficients.mean()
-        dice_loss /= y_pred.size(1)
 
         if self.crossentropy:
-            crossentropy_loss = self.ce(y_pred, y_true)
+            y_true_labels = torch.argmax(y_true, dim=1)
+            crossentropy_loss = self.ce(y_pred, y_true_labels)
             total_loss = crossentropy_loss + dice_loss
 
             return total_loss

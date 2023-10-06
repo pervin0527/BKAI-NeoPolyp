@@ -23,7 +23,7 @@ def eval(model, dataloader, loss_fn, acc_fn, device):
     epoch_loss = 0
     epoch_acc = 0
     with torch.no_grad():
-        for idx, (origin_x, origin_y, batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
+        for idx, (batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Valid", unit="batch")):
             batch_x = batch_x.to(device, dtype=torch.float32)
             batch_y = batch_y.to(device, dtype=torch.float32)
 
@@ -45,10 +45,7 @@ def train(epoch, model, dataloader, optimizer, loss_fn, acc_fn, device, fig_dir)
 
     epoch_loss = 0
     epoch_acc = 0
-    for idx, (origin_x, origin_y, batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
-        if config["save_batch"]:
-            save_visualization(epoch, idx, origin_x, origin_y, batch_x, batch_y, fig_dir)
-
+    for idx, (batch_x, batch_y) in enumerate(tqdm(dataloader, desc="Train", unit="batch")):
         batch_x = batch_x.to(device, dtype=torch.float32)
         batch_y = batch_y.to(device, dtype=torch.float32)
 
@@ -194,6 +191,6 @@ if __name__ == "__main__":
             break
 
         print_and_save(f"{save_path}/logs/train_log.txt", data_str)
-        predict(epoch + 1, config, model=model, device=device)
+        predict(epoch + 1, config, model=model, dataset=valid_dataset, device=device)
     
     writer.close()

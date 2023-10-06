@@ -10,9 +10,16 @@ from glob import glob
 from data.batch_preprocess import *
 
 def decode_image(image):
+    # image = (1 + image) * 127.5
+    # image = image * 255
+    # image = image.astype(np.uint8)
+
     image = np.transpose(image, (1, 2, 0))
-    image = image * 255
-    image = image.astype(np.uint8)
+    mean = (0.485, 0.456, 0.406)
+    std = (0.229, 0.224, 0.225)
+
+    image = (image * std) + mean
+    image = np.clip(image * 255.0, 0, 255).astype(np.uint8)
 
     return image
 
@@ -26,7 +33,7 @@ def decode_mask(pred_mask):
         return decoded_mask
 
 
-def predict(epoch, config, model, device):
+def predict(epoch, config, model, dataset, device):
     model.eval()
 
     data_dir = config["data_dir"]
@@ -36,8 +43,7 @@ def predict(epoch, config, model, device):
     if not os.path.isdir(f"{save_dir}/predict"):
         os.makedirs(f"{save_dir}/predict")
 
-    with open(f"{data_dir}/valid.txt", "r") as f:
-        files = f.readlines()
+    files = dataset.file_list
 
     random.shuffle(files)
     samples = random.sample(files, num_samples)
@@ -50,9 +56,11 @@ def predict(epoch, config, model, device):
         # mask_path = f"{data_dir}/train_mask/{file}.png" ## train_gt, jpeg
 
         image, mask = load_img_mask(img_path, mask_path, size=config["img_size"])
-        x = normalize(image, config["mean"], config["std"])
+        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+
+        x = normalize(image)
         x = np.expand_dims(x, 0)
-        x = torch.from_numpy(x).to(device)
+        x = torch.from_numpy(x).float().to(device)
 
         y_pred = model(x)
         pred_mask = torch.argmax(y_pred[0], dim=0).cpu().numpy()

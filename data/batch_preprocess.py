@@ -2,10 +2,23 @@ import cv2
 import copy
 import random
 import numpy as np
-import albumentations as A
-from scipy.ndimage import label
 
-def load_img_mask(image_path, mask_path=None, size=256, only_img=False):
+from glob import glob
+
+def get_file_list(path):
+    totals = {}
+    color_files = sorted(glob(f"{path}/*.txt"))
+    for color_file in color_files:
+        name = color_file.split('/')[-1].split('.')[0]
+        with open(color_file, 'r') as f:
+            files = [x.strip() for x in f.readlines()]
+            
+        random.shuffle(files)
+        totals.update({name : files})
+
+    return totals
+
+def load_img_mask(image_path, mask_path, size=256, only_img=False):
     if only_img:
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -18,7 +31,7 @@ def load_img_mask(image_path, mask_path=None, size=256, only_img=False):
         mask = cv2.imread(mask_path) 
         
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+        # mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
 
         image = cv2.resize(image, (size, size))
         mask = cv2.resize(mask, (size, size))
@@ -26,25 +39,42 @@ def load_img_mask(image_path, mask_path=None, size=256, only_img=False):
         return image, mask
 
 
-def encode_mask(mask):
-    label_transformed = np.zeros(shape=mask.shape[:-1], dtype=np.uint8)
+def encode_mask(mask):  
+    hsv_mask = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)
+    
+    # lower boundary RED color range values; Hue (0 - 10)
+    lower1 = np.array([0, 100, 20])
+    upper1 = np.array([10, 255, 255])
+    
+    # upper boundary RED color range values; Hue (160 - 180)
+    lower2 = np.array([160,100,20])
+    upper2 = np.array([179,255,255])
 
-    green_mask = mask[:, :, 1] >= 50
-    label_transformed[green_mask] = 1
+    lower_mask = cv2.inRange(hsv_mask, lower1, upper1)
+    upper_mask = cv2.inRange(hsv_mask, lower2, upper2)
+    red_mask = lower_mask + upper_mask;
+    red_mask[red_mask != 0] = 2
 
-    red_mask = mask[:, :, 0] >= 50
-    label_transformed[red_mask] = 2
+    # boundary RED color range values; Hue (36 - 70)
+    green_mask = cv2.inRange(hsv_mask, (36, 25, 25), (70, 255,255))
+    green_mask[green_mask != 0] = 1
+    full_mask = cv2.bitwise_or(red_mask, green_mask)
+    full_mask = full_mask.astype(np.uint8)
 
-    return label_transformed
+    return full_mask
 
 
-def normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+def normalize(image):
     image = np.array(image).astype(np.float32)
-    image /= 255.0
-    # image -= mean
-    # image /= std
+    # image = image / 255.0
+    # image = (image / 127.5) - 1
 
-    image = np.transpose(image, (2, 0, 1)) ## H, W, C -> C, H, W
+    image /= 255.0
+    mean=(0.485, 0.456, 0.406)
+    std=(0.229, 0.224, 0.225)
+    image = (image - mean) / std
+
+    image = np.transpose(image, (2, 0, 1))
 
     return image
 
@@ -69,7 +99,9 @@ def mosaic_augmentation(piecies, size):
     h, w = size, size
     mosaic_img = np.zeros((h, w, 3), dtype=np.uint8)
     mosaic_mask = np.zeros((h, w, 3), dtype=np.uint8)
-    cx, cy = random.randint(w//4, 3*w//4), random.randint(h//4, 3*h//4)
+
+    # cx, cy = random.randint(w//4, 3*w//4), random.randint(h//4, 3*h//4)
+    cx, cy = w // 2, h // 2
     
     indices = [0, 1, 2, 3]
     random.shuffle(indices)
@@ -132,8 +164,8 @@ def spatially_exclusive_pasting(image, mask, alpha=0.7, iterations=10):
     he, we = hs.max(), ws.max()
     hs, ws = hs.min(), ws.min()
     
-    If = target_image[hs:he, ws:we]
     Lf_gray = L_gray[hs:he, ws:we]
+    If = target_image[hs:he, ws:we]
     Lf_color = target_mask[hs:he, ws:we]
     
     M = np.random.rand(*target_image.shape[:2])
